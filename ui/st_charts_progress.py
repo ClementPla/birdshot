@@ -1,5 +1,7 @@
 import streamlit as st
 import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 import numpy as np
 from birdshot.analysis.markers import (
     extract_f30_analysis,
@@ -13,6 +15,7 @@ def plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta):
     meanAmplitudes = dict(OS=dict(), OD=dict())
     stdAmplitudes = dict(OS=dict(), OD=dict())
     for visit in data:
+        x = data[visit][("", "Time (ms)")]
         try:
             od_peaks_amplitude, os_peaks_amplitude, od_peaks_time, os_peaks_time = (
                 extract_f30_analysis(
@@ -35,25 +38,22 @@ def plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta):
 
     col1, col2 = st.columns(2)
     for laterality, col in zip(["OD", "OS"], [col1, col2]):
-        ys = []
-        xs = []
+        fig = go.Figure()
         xoffset = 0
         for visit in data:
-            ys.append(data[visit][1, laterality].values)
+            fig.add_trace(
+                go.Scatter(
+                    x=x + xoffset,
+                    y=data[visit][1, laterality].values,
+                    name=visit,
+                )
+            )
+            xoffset += (x.max() - x.min()) * 1.2
 
-            xs.append(np.arange(len(ys[-1])) + xoffset)
-            xoffset += len(ys[-1]) + 100
-
-        ys = np.concatenate(ys)
-        xs = np.concatenate(xs)
-
-        fig = px.line(
-            x=xs,
-            y=ys,
-            title=laterality,
-        )
         fig.update_yaxes(range=[-150, 150])
+        # Set the title of the graph
 
+        fig.update_layout(title=f"F30 {laterality}")
         with col:
             st.plotly_chart(fig)
 
@@ -73,3 +73,207 @@ def plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta):
             )
             with col:
                 st.plotly_chart(progress)
+
+
+def plot_scoto_rod_progression(
+    data,
+    rodOnly=True,
+    scotorodcone_low_pass=75,
+    scotorodcone_time_limits=(10, 60),
+    scotorod_low_pass=75,
+    scotorod_time_limits=(10, 125),
+):
+    if rodOnly:
+        plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits)
+    else:
+        plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits)
+
+
+def plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits):
+    amplitudeA = dict(OS=dict(), OD=dict())
+    amplitudeB = dict(OS=dict(), OD=dict())
+    timeA = dict(OS=dict(), OD=dict())
+    timeB = dict(OS=dict(), OD=dict())
+    col1, col2 = st.columns(2)
+    for visit in data:
+        B_amplitude, A_amplitude, B_time_od, A_time_od, B_time_os, A_time_os = (
+            extract_scoto_rod_cone_analysis(
+                data[visit].copy(),
+                plot=False,
+                time_limits=scotorodcone_time_limits,
+                return_filtered=False,
+                filtered=scotorodcone_low_pass,
+            )
+        )
+
+        amplitudeA["OD"][visit] = A_amplitude["OD"]
+        amplitudeA["OS"][visit] = A_amplitude["OS"]
+
+        amplitudeB["OD"][visit] = B_amplitude["OD"]
+        amplitudeB["OS"][visit] = B_amplitude["OS"]
+        timeA["OD"][visit] = A_time_od
+        timeA["OS"][visit] = A_time_os
+        timeB["OD"][visit] = B_time_od
+        timeB["OS"][visit] = B_time_os
+
+    for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        fig = go.Figure()
+        x = data[visit][("", "Time (ms)")]
+        offset = 0
+        for visit in data:
+            fig.add_trace(
+                go.Scatter(
+                    x=x + offset,
+                    y=data[visit][19, laterality].values,
+                    name=visit,
+                )
+            )
+            fig.update_yaxes(range=[-250, 250])
+            fig.update_layout(title=f"Scotopic rod-cone progression {laterality}")
+            offset += (x.max() - x.min()) * 1.25
+        with col:
+            st.plotly_chart(fig)
+
+        progress = make_subplots(specs=[[{"secondary_y": True}]])
+        progress.add_trace(
+            go.Scatter(
+                x=list(amplitudeA[laterality].keys()),
+                y=list(amplitudeA[laterality].values()),
+                name=f"Amplitude A {laterality}",
+            ),
+            secondary_y=False,
+        )
+
+        progress.add_trace(
+            go.Scatter(
+                x=list(amplitudeB[laterality].keys()),
+                y=list(amplitudeB[laterality].values()),
+                name=f"Amplitude B {laterality}",
+            ),
+            secondary_y=False,
+        )
+
+        progress.add_trace(
+            go.Scatter(
+                x=list(timeA[laterality].keys()),
+                y=list(timeA[laterality].values()),
+                name=f"φA {laterality}",
+            ),
+            secondary_y=True,
+        )
+
+        progress.add_trace(
+            go.Scatter(
+                x=list(timeB[laterality].keys()),
+                y=list(timeB[laterality].values()),
+                name=f"φB {laterality}",
+            ),
+            secondary_y=True,
+        )
+
+        progress.update_yaxes(range=[0, 400], secondary_y=False)
+        progress.update_yaxes(range=[0, 150], secondary_y=True)
+        progress.update_layout(title=f"Scotopic rod-cone progression {laterality}")
+        progress.update_yaxes(
+            title_text="Time (ms)",
+            secondary_y=True,
+            title_font_color="red",
+        )
+        progress.update_yaxes(
+            title_text="Amplitude (uV)",
+            secondary_y=False,
+            title_font_color="blue",
+        )
+
+        with col:
+            st.plotly_chart(progress)
+
+
+def plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits):
+    amplitude = dict(OS=dict(), OD=dict())
+    time = dict(OS=dict(), OD=dict())
+    col1, col2 = st.columns(2)
+
+    for visit in data:
+        amplitudes, od_peaks_time, os_peaks_time = extract_scoto_rod_analysis(
+            data[visit].copy(),
+            plot=False,
+            time_limits=scotorod_time_limits,
+            return_filtered=False,
+            filtered=scotorod_low_pass,
+        )
+
+        amplitude["OD"][visit] = amplitudes["OD"]
+        amplitude["OS"][visit] = amplitudes["OS"]
+        time["OD"][visit] = od_peaks_time
+        time["OS"][visit] = os_peaks_time
+
+    for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        fig = go.Figure()
+        xoffset = 0
+        for visit in data:
+            x = data[visit][("", "Time (ms)")]
+            fig.add_trace(
+                go.Scatter(
+                    x=x + xoffset,
+                    y=data[visit][9, laterality].values,
+                    name=visit,
+                )
+            )
+            xoffset += (x.max() - x.min()) * 1.5
+
+        fig.update_yaxes(range=[-250, 250])
+        fig.update_layout(title=f"Scotopic rod progression {laterality}")
+        with col:
+            st.plotly_chart(fig)
+        progress = make_subplots(specs=[[{"secondary_y": True}]])
+
+        progress.add_trace(
+            go.Scatter(
+                x=list(amplitude[laterality].keys()),
+                y=list(amplitude[laterality].values()),
+                name=f"Amplitude B {laterality}",
+            ),
+            secondary_y=False,
+        )
+
+        progress.add_trace(
+            go.Scatter(
+                x=list(time[laterality].keys()),
+                y=list(time[laterality].values()),
+                name=f"φB {laterality}",
+            ),
+            secondary_y=True,
+        )
+        progress.update_yaxes(range=[-250, 250], secondary_y=False)
+        progress.update_yaxes(range=[25, 150], secondary_y=True)
+
+        progress.update_layout(title=f"Scotopic rod progression {laterality}")
+        progress.update_yaxes(title_text="Time (ms)", secondary_y=True)
+        progress.update_yaxes(title_text="Amplitude (uV)", secondary_y=False)
+
+        with col:
+            st.plotly_chart(progress)
+
+
+def plot_photo_progress(data, steps):
+    col1, col2 = st.columns(2)
+    for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        fig = go.Figure()
+        xoffset = 0
+
+        for visit, step in zip(data, steps):
+            x = data[visit][("", "Time (ms)")]
+            fig.add_trace(
+                go.Scatter(
+                    x=x + xoffset,
+                    y=data[visit][step, laterality].values,
+                    name=visit,
+                )
+            )
+            xoffset += (x.max() - x.min()) * 1.5
+
+        fig.update_yaxes(range=[-250, 250])
+        fig.update_layout(title=f"Photopic progression {laterality}")
+        with col:
+            st.plotly_chart(fig)

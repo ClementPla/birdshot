@@ -50,3 +50,16 @@ def list_patients(input_folder):
     )
 
     return all_patients
+
+
+def extract_date_from_file(filepath: str) -> str:
+    filepath = Path(filepath)
+    filename = filepath.stem
+    # The date is between parentheses in the file name
+    # Example: "Photo (2023.10.01) - Patient 1"
+
+    str_date = filename.split(" ")[1]
+    str_date = str_date.replace("(", "").replace(")", "")
+    # Convert the string to a datetime object
+    date = datetime.strptime(str_date, "%Y.%m.%d")
+    return date

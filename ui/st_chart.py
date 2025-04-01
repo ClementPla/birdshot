@@ -5,15 +5,46 @@ from birdshot.analysis.markers import (
     extract_scoto_rod_analysis,
     extract_baseline_value,
     extract_scoto_rod_cone_analysis,
+    extract_photo_analysis,
 )
 from warnings import warn
 import pandas as pd
 import plotly.graph_objects as go
+from pickle import load
+import numpy as np
 
 
-def plot_photo():
-    pass
-    # -150 150
+def plot_photo(
+    data,
+    extract_markers=False,
+):
+    time = data["Time (ms)"]
+    labels = ["a", "b", "i"]
+    markers = None
+    if extract_markers:
+        markers = extract_photo_analysis(data)
+
+    col1, col2 = st.columns(2)
+    for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        fig = px.line(
+            x=time,
+            y=data[laterality],
+            title=laterality,
+        )
+        fig.update_yaxes(range=[-150, 150])
+        if extract_markers and markers is not None:
+            for label in labels:
+                xpt, ypt = markers[f"{laterality} {label}"]
+                fig.add_scatter(
+                    x=xpt,
+                    y=ypt,
+                    mode="markers",
+                    name=label,
+                    marker=dict(size=10),
+                )
+
+        with col:
+            st.plotly_chart(fig)
 
 
 def plot_F30(data, extract_markers=False, prominance=5, delta=0.7, filtered=180):
@@ -127,7 +158,7 @@ def plot_scoto(
                 ]
                 os_markers = [
                     (
-                        B_amplitude["OS"] - A_amplitude["OD"] + baseline[(step, "OS")],
+                        B_amplitude["OS"] - A_amplitude["OS"] + baseline[(step, "OS")],
                         B_time_os,
                     ),
                     (-A_amplitude["OS"] + baseline[(step, "OS")], A_time_os),

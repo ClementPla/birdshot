@@ -3,6 +3,8 @@ import scipy
 from birdshot.analysis.filter import low_pass_filter
 import matplotlib.pyplot as plt
 import streamlit as st
+from pickle import load
+from birdshot.analysis.models import load_model, evaluate
 
 
 def extract_baseline_value(trial, time=None):
@@ -327,17 +329,27 @@ def extract_f30_analysis(
     return outputs
 
 
-@st.cache_data
-def extract_photo_analysis(trial, plot=False, title=""):
-    time = trial[("", "Time (ms)")]
-    if plot:
-        fig, axs = plt.subplots(1, 2, figsize=(8, 3))
-        axs[1].plot(time, trial[(13, "OS")])
-        axs[0].plot(time, trial[(13, "OD")])
-        axs[1].plot(time, trial[(14, "OS")])
-        axs[0].plot(time, trial[(14, "OD")])
-        fig.suptitle(title)
-        lines_labels = [ax.get_legend_handles_labels() for ax in fig.axes]
-        lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-        fig.legend(lines, labels)
-        plt.show()
+@st.cache_resource
+def get_GRU_model():
+    return load_model()
+
+
+def extract_photo_analysis(trial):
+    labels = ["a", "b", "i"]
+    laterality = ["OS", "OD"]
+    results = {f"{eye} {label}": None for eye in laterality for label in labels}
+    time = trial["Time (ms)"]
+    model = get_GRU_model()
+
+    for lat in laterality:
+        x = trial[lat].values.reshape(-1, 1).transpose()
+        pred = evaluate(model, x, choice="first")
+        for label in labels:
+            xpt = int(pred[label].squeeze(0))
+            ypt = trial[lat].values[xpt]
+
+            # Get the exact time
+            xpt = time[xpt]
+
+            results[f"{lat} {label}"] = ([xpt], [ypt])
+    return results

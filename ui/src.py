@@ -1,15 +1,34 @@
 import streamlit as st
 import pandas as pd
 from birdshot.io.files import list_patients
-from birdshot.io.load import load_patient
+from birdshot.io.load import load_patient, get_photo_step_for_patient
 from birdshot.io.utils import extract_visit_date_from_filepath
-from ui.st_chart import plot_F30, plot_scoto
-from ui.st_charts_progress import plot_f30_progression
+from ui.st_chart import plot_F30, plot_scoto, plot_photo
+from ui.st_charts_progress import (
+    plot_f30_progression,
+    plot_scoto_rod_progression,
+    plot_photo_progress,
+)
 from birdshot.analysis.engine import ERGFeatureExtractor
 from birdshot.io.output import write_to_excel
 import warnings
 
 st.set_page_config(layout="wide")
+
+st.markdown(
+    """
+    <style>
+        .reportview-container {
+            margin-top: -2em;
+        }
+        #MainMenu {visibility: hidden;}
+        .stAppDeployButton {display:none;}
+        footer {visibility: hidden;}
+        #stDecoration {display:none;}
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 
 warnings.simplefilter(
     action="ignore", category=(pd.errors.PerformanceWarning, RuntimeWarning)
@@ -108,8 +127,17 @@ def build_plot_tab(
                         scotorodcone_low_pass=srodcone_low_pass,
                         scotorodcone_time_limits=srodcone_time_limits,
                     )
-                case _:
-                    st.write(data)
+                case "Photo":
+                    step = get_photo_step_for_patient(visit)
+                    time = data[("", "Time (ms)")]
+                    photo = data[step]
+                    df = pd.concat([time, photo], axis=1)
+
+                    df.columns = ["Time (ms)"] + list(photo.columns)
+                    plot_photo(
+                        df,
+                        extract_markers=markerExtraction,
+                    )
 
 
 def build_progression_tab(
@@ -126,21 +154,35 @@ def build_progression_tab(
     scotoOptions,
 ):
     data = dict()
+    photoSteps = []
     for visit, file in zip(visits, files):
         data[visit] = st_load_patient(file)
+        if selectExam == "Photo":
+            step = get_photo_step_for_patient(file)
+            photoSteps.append(step)
 
     match selectExam:
         case "F30":
             plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta)
         case "Scoto":
-            pass
+            plot_scoto_rod_progression(
+                data,
+                rodOnly=scotoOptions == "Rod Function",
+                scotorod_low_pass=srod_low_pass,
+                scotorod_time_limits=srod_time_limits,
+                scotorodcone_low_pass=srodcone_low_pass,
+                scotorodcone_time_limits=srodcone_time_limits,
+            )
+        case _:
+            plot_photo_progress(data, photoSteps)
+
+
+@st.cache_data
+def start(inputPath):
+    return list_patients(inputPath)
 
 
 def main():
-    @st.cache_data
-    def start(inputPath):
-        return list_patients(inputPath)
-
     with inputTab:
         st.write("Choose the files to analyze")
         inputPath = st.text_input("Path to the folder containing the patient files")
@@ -160,7 +202,7 @@ def main():
     with analysisTab:
         if patientsFiles:
             with st.sidebar:
-                markerExtraction = st.toggle("Automatic marker extraction", True)
+                markerExtraction = st.toggle("Automatic marker extraction", False)
                 selectPatient = st.selectbox("Select a patient", patientsFiles.keys())
                 selectExam = st.radio("Select an exam", patientsFiles[selectPatient])
 
