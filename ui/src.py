@@ -1,7 +1,13 @@
 import streamlit as st
 import pandas as pd
+import pickle
+
 from birdshot.io.files import list_patients
-from birdshot.io.load import load_patient, get_photo_step_for_patient
+from birdshot.io.load import (
+    load_patient,
+    get_photo_step_for_patient,
+    extract_age_and_sex,
+)
 from birdshot.io.utils import extract_visit_date_from_filepath
 from ui.st_chart import plot_F30, plot_scoto, plot_photo
 from ui.st_charts_progress import (
@@ -38,6 +44,13 @@ inputTab, analysisTab, exportTab = st.tabs(["Input", "Inspect", "Export"])
 hasStarted = False
 
 patientsFiles = None
+
+
+@st.cache_data
+def load_normal_data():
+    with open("models/normal_results.pickle", "rb") as f:
+        data = pickle.load(f)
+    return data
 
 
 @st.cache_data
@@ -89,6 +102,23 @@ def build_export_tab(
         st.write("No patients found")
 
 
+def get_normal_data(visit):
+    normal_data = load_normal_data()
+    age, sex = extract_age_and_sex(visit)
+    if st.session_state.same_sex_norm:
+        filtered_data = [r for r in normal_data if r.sex == sex]
+    else:
+        filtered_data = normal_data
+
+    if st.session_state.age_tolerance_norm:
+        filtered_data = [
+            r
+            for r in filtered_data
+            if abs(r.age - age) <= st.session_state.age_tolerance_norm
+        ]
+    return filtered_data
+
+
 def build_plot_tab(
     visits,
     files,
@@ -104,14 +134,16 @@ def build_plot_tab(
     scotoOptions,
 ):
     tabs = st.tabs(visits)
+
     for tab, visit in zip(tabs, files):
         with tab:
             data = st_load_patient(visit)
-
+            normal_data = get_normal_data(visit)
             match selectExam:
                 case "F30":
                     plot_F30(
                         data,
+                        normal_data=[r.f30 for r in normal_data],
                         extract_markers=markerExtraction,
                         prominance=f30_prominance,
                         delta=f30_delta,
@@ -120,6 +152,7 @@ def build_plot_tab(
                 case "Scoto":
                     plot_scoto(
                         data,
+                        normal_data=[r.scoto for r in normal_data],
                         extract_markers=markerExtraction,
                         rodOnly=scotoOptions == "Rod Function",
                         scotorod_low_pass=srod_low_pass,
@@ -136,6 +169,7 @@ def build_plot_tab(
                     df.columns = ["Time (ms)"] + list(photo.columns)
                     plot_photo(
                         df,
+                        normal_data=[r.photo for r in normal_data],
                         extract_markers=markerExtraction,
                     )
 
@@ -157,16 +191,26 @@ def build_progression_tab(
     photoSteps = []
     for visit, file in zip(visits, files):
         data[visit] = st_load_patient(file)
+
         if selectExam == "Photo":
             step = get_photo_step_for_patient(file)
             photoSteps.append(step)
-
+    normal_data = get_normal_data(
+        file
+    )  # We take the last visit as reference to filter on age.
     match selectExam:
         case "F30":
-            plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta)
+            plot_f30_progression(
+                data,
+                [r.f30 for r in normal_data],
+                f30_low_pass,
+                f30_prominance,
+                f30_delta,
+            )
         case "Scoto":
             plot_scoto_rod_progression(
                 data,
+                [r.scoto for r in normal_data],
                 rodOnly=scotoOptions == "Rod Function",
                 scotorod_low_pass=srod_low_pass,
                 scotorod_time_limits=srod_time_limits,
@@ -174,7 +218,7 @@ def build_progression_tab(
                 scotorodcone_time_limits=srodcone_time_limits,
             )
         case _:
-            plot_photo_progress(data, photoSteps)
+            plot_photo_progress(data, [r.photo for r in normal_data], photoSteps)
 
 
 @st.cache_data
@@ -190,7 +234,7 @@ def main():
         if startButton:
             start(inputPath)
 
-    patientsFiles = start(inputPath)
+    patientsFiles = start("/home/clement/Documents/data/Birdshot/data/")
     f30_prominance = 10
     f30_delta = 0.4
     f30_low_pass = 150
@@ -202,7 +246,7 @@ def main():
     with analysisTab:
         if patientsFiles:
             with st.sidebar:
-                markerExtraction = st.toggle("Automatic marker extraction", False)
+                markerExtraction = st.toggle("Automatic marker extraction", True)
                 selectPatient = st.selectbox("Select a patient", patientsFiles.keys())
                 selectExam = st.radio("Select an exam", patientsFiles[selectPatient])
 
@@ -229,6 +273,16 @@ def main():
                                 srodcone_time_limits = st.slider(
                                     "Time limits Rod+Cone", 0, 250, (10, 125)
                                 )
+
+                with st.expander("Normalized values", expanded=True):
+                    show_norm = st.toggle("Show normal values", True)
+                    st.session_state.show_norm = show_norm
+                    st.session_state.same_sex_norm = st.toggle(
+                        "Only same gender population", False
+                    )
+                    st.session_state.age_tolerance_norm = st.slider(
+                        "Age tolerance", 5, 95, 60
+                    )
 
             if selectPatient and selectExam:
                 filepath = patientsFiles[selectPatient][selectExam]

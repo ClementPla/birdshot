@@ -1,13 +1,17 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import datetime
 
 
 def find_data_line(filepath):
     with open(filepath, "r", encoding="unicode_escape") as f:
         for i, line in enumerate(f):
             if line.startswith("Data Table"):
-                return int(line.split("\t")[2]) - 2
+                try:
+                    return int(line.split("\t")[2]) - 2
+                except ValueError:
+                    return i + 2
 
     raise ValueError("Data line not found in file")
 
@@ -73,8 +77,13 @@ def get_photo_step_for_patient(filepath, val=5.0):
     )
     df = df[df.columns[:3]]
     df = df[1:]
-
-    return int(df[df["cd.s/m²"] == val]["Step"].values[0])
+    col_intensity = df.columns[-1]
+    col_step = df.columns[0]
+    try:
+        return int(df[df[col_intensity] == val][col_step].values[0])
+    except KeyError:
+        print("Failed to load the step for the value asked, returning 13")
+        return 13
 
 
 def extract_data(df: pd.DataFrame, trials, indexes, channels, relevant_channels):
@@ -185,3 +194,19 @@ def extract_markers(filepath):
 
     df = df.set_index(["Step", "Eye", "Markers"])
     return df.transpose()
+
+
+def extract_age_and_sex(filepath):
+    age = None
+    sex = None
+    with open(filepath, "r", encoding="unicode_escape") as f:
+        for i, line in enumerate(f):
+            if line.startswith("DOB"):
+                DOB = line.split("\t")[1]
+                # DOB is in the format YYYY-MM-DD
+
+                age = datetime.datetime.now().year - int(DOB.split("-")[0])
+            if line.startswith("Gender"):
+                sex = line.split("\t")[1][0]
+
+    return age, sex

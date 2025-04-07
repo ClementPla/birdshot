@@ -9,9 +9,10 @@ from birdshot.analysis.markers import (
     extract_baseline_value,
     extract_scoto_rod_cone_analysis,
 )
+from birdshot.utils.st_chart import add_fill_between
 
 
-def plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta):
+def plot_f30_progression(data, normal_data, f30_low_pass, f30_prominance, f30_delta):
     meanAmplitudes = dict(OS=dict(), OD=dict())
     stdAmplitudes = dict(OS=dict(), OD=dict())
     for visit in data:
@@ -77,6 +78,7 @@ def plot_f30_progression(data, f30_low_pass, f30_prominance, f30_delta):
 
 def plot_scoto_rod_progression(
     data,
+    normal_data,
     rodOnly=True,
     scotorodcone_low_pass=75,
     scotorodcone_time_limits=(10, 60),
@@ -84,12 +86,16 @@ def plot_scoto_rod_progression(
     scotorod_time_limits=(10, 125),
 ):
     if rodOnly:
-        plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits)
+        plot_scoto_rod(data, normal_data, scotorod_low_pass, scotorod_time_limits)
     else:
-        plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits)
+        plot_scoto_rodcone(
+            data, normal_data, scotorodcone_low_pass, scotorodcone_time_limits
+        )
 
 
-def plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits):
+def plot_scoto_rodcone(
+    data, normal_data, scotorodcone_low_pass, scotorodcone_time_limits
+):
     amplitudeA = dict(OS=dict(), OD=dict())
     amplitudeB = dict(OS=dict(), OD=dict())
     timeA = dict(OS=dict(), OD=dict())
@@ -116,7 +122,20 @@ def plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits):
         timeB["OD"][visit] = B_time_od
         timeB["OS"][visit] = B_time_os
 
+    N = len(data[visit])
+
     for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        normal_values = np.asarray(
+            [
+                r[19, laterality].values
+                for r in normal_data
+                if len(r[19, laterality].values) == N
+            ]
+        )
+
+        mean_normal = np.mean(normal_values, axis=0)
+        std_normal = np.std(normal_values, axis=0)
+
         fig = go.Figure()
         x = data[visit][("", "Time (ms)")]
         offset = 0
@@ -128,9 +147,38 @@ def plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits):
                     name=visit,
                 )
             )
-            fig.update_yaxes(range=[-250, 250])
-            fig.update_layout(title=f"Scotopic rod-cone progression {laterality}")
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + offset,
+                std_mult=2.0,
+                color="rgba(0,115,0,0.2)",
+                showlegend=False,
+            )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + offset,
+                std_mult=1.0,
+                color="rgba(0,150,0,0.25)",
+                showlegend=False,
+            )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + offset,
+                std_mult=0.5,
+                color="rgba(0,225,0,0.3)",
+                showlegend=False,
+            )
+
             offset += (x.max() - x.min()) * 1.25
+
+        fig.update_yaxes(range=[-250, 250])
+        fig.update_layout(title=f"Scotopic rod-cone progression {laterality}")
         with col:
             st.plotly_chart(fig)
 
@@ -173,7 +221,9 @@ def plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits):
 
         progress.update_yaxes(range=[0, 400], secondary_y=False)
         progress.update_yaxes(range=[0, 150], secondary_y=True)
-        progress.update_layout(title=f"Scotopic rod-cone progression {laterality}")
+        progress.update_layout(
+            title=f"Scotopic rod-cone Markers progression {laterality}"
+        )
         progress.update_yaxes(
             title_text="Time (ms)",
             secondary_y=True,
@@ -189,7 +239,7 @@ def plot_scoto_rodcone(data, scotorodcone_low_pass, scotorodcone_time_limits):
             st.plotly_chart(progress)
 
 
-def plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits):
+def plot_scoto_rod(data, normal_data, scotorod_low_pass, scotorod_time_limits):
     amplitude = dict(OS=dict(), OD=dict())
     time = dict(OS=dict(), OD=dict())
     col1, col2 = st.columns(2)
@@ -208,7 +258,19 @@ def plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits):
         time["OD"][visit] = od_peaks_time
         time["OS"][visit] = os_peaks_time
 
+    N = len(data[visit])
+
     for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        normal_values = np.asarray(
+            [
+                r[9, laterality].values
+                for r in normal_data
+                if len(r[9, laterality].values) == N
+            ]
+        )
+        mean_normal = np.mean(normal_values, axis=0)
+        std_normal = np.std(normal_values, axis=0)
+
         fig = go.Figure()
         xoffset = 0
         for visit in data:
@@ -220,6 +282,34 @@ def plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits):
                     name=visit,
                 )
             )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + xoffset,
+                std_mult=2.0,
+                color="rgba(0,115,0,0.2)",
+                showlegend=False,
+            )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + xoffset,
+                std_mult=1.0,
+                color="rgba(0,150,0,0.25)",
+                showlegend=False,
+            )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + xoffset,
+                std_mult=0.5,
+                color="rgba(0,225,0,0.3)",
+                showlegend=False,
+            )
+
             xoffset += (x.max() - x.min()) * 1.5
 
         fig.update_yaxes(range=[-250, 250])
@@ -256,11 +346,27 @@ def plot_scoto_rod(data, scotorod_low_pass, scotorod_time_limits):
             st.plotly_chart(progress)
 
 
-def plot_photo_progress(data, steps):
+def plot_photo_progress(data, normal_data, steps):
     col1, col2 = st.columns(2)
+
+    for _, d in data.items():
+        N = len(d)
+        break
+
     for laterality, col in zip(["OD", "OS"], [col1, col2]):
         fig = go.Figure()
         xoffset = 0
+
+        normal_values = np.asarray(
+            [
+                r[laterality].values
+                for r in normal_data
+                if len(r[laterality].values) == N
+            ]
+        )
+
+        mean_normal = np.mean(normal_values, axis=0)
+        std_normal = np.std(normal_values, axis=0)
 
         for visit, step in zip(data, steps):
             x = data[visit][("", "Time (ms)")]
@@ -271,6 +377,35 @@ def plot_photo_progress(data, steps):
                     name=visit,
                 )
             )
+
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + xoffset,
+                std_mult=2.0,
+                color="rgba(0,115,0,0.2)",
+                showlegend=False,
+            )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + xoffset,
+                std_mult=1.0,
+                color="rgba(0,150,0,0.25)",
+                showlegend=False,
+            )
+            add_fill_between(
+                fig,
+                mean_normal,
+                std_normal,
+                time=x + xoffset,
+                std_mult=0.5,
+                color="rgba(0,225,0,0.3)",
+                showlegend=False,
+            )
+
             xoffset += (x.max() - x.min()) * 1.5
 
         fig.update_yaxes(range=[-250, 250])

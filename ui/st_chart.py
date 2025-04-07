@@ -7,15 +7,20 @@ from birdshot.analysis.markers import (
     extract_scoto_rod_cone_analysis,
     extract_photo_analysis,
 )
+from birdshot.utils.st_chart import add_fill_between
 from warnings import warn
 import pandas as pd
 import plotly.graph_objects as go
 from pickle import load
 import numpy as np
 
+from scipy import signal
+import streamlit as st
+
 
 def plot_photo(
     data,
+    normal_data,
     extract_markers=False,
 ):
     time = data["Time (ms)"]
@@ -26,11 +31,56 @@ def plot_photo(
 
     col1, col2 = st.columns(2)
     for laterality, col in zip(["OD", "OS"], [col1, col2]):
+        normal_values = np.asarray(
+            [
+                r[laterality].values
+                for r in normal_data
+                if len(r[laterality].values) == len(data[laterality])
+            ]
+        )
+
+        mean_normal = np.mean(normal_values, axis=0)
+        std_normal = np.std(normal_values, axis=0)
+
         fig = px.line(
             x=time,
             y=data[laterality],
             title=laterality,
         )
+
+        add_fill_between(
+            fig=fig,
+            time=data[("Time (ms)")],
+            mean_values=mean_normal,
+            std_values=std_normal,
+            std_mult=4,
+            color="rgba(0,115,0,0.2)",
+        )
+        add_fill_between(
+            fig=fig,
+            time=data[("Time (ms)")],
+            mean_values=mean_normal,
+            std_values=std_normal,
+            std_mult=2,
+            color="rgba(0,115,0,0.2)",
+        )
+        add_fill_between(
+            fig=fig,
+            time=data[("Time (ms)")],
+            mean_values=mean_normal,
+            std_values=std_normal,
+            std_mult=1,
+            color="rgba(0,150,0,0.25)",
+        )
+        add_fill_between(
+            fig=fig,
+            time=data[("Time (ms)")],
+            mean_values=mean_normal,
+            std_values=std_normal,
+            std_mult=0.5,
+            color="rgba(0,225,0,0.3)",
+        )
+
         fig.update_yaxes(range=[-150, 150])
         if extract_markers and markers is not None:
             for label in labels:
@@ -47,7 +97,9 @@ def plot_photo(
             st.plotly_chart(fig)
 
 
-def plot_F30(data, extract_markers=False, prominance=5, delta=0.7, filtered=180):
+def plot_F30(
+    data, normal_data, extract_markers=False, prominance=5, delta=0.7, filtered=180
+):
     col1, col2 = st.columns(2)
     od_marker = None
     os_marker = None
@@ -67,13 +119,67 @@ def plot_F30(data, extract_markers=False, prominance=5, delta=0.7, filtered=180)
             filtered_data = results[-1]
         except Exception as e:
             warn(f"Error while extracting markers: {e}")
+            filtered_data = data.copy()
+    else:
+        filtered_data = data.copy()
 
     for laterality, col, marker in zip(
         ["OD", "OS"], [col1, col2], [od_marker, os_marker]
     ):
+        normal_values = np.asarray([r[1, laterality].values for r in normal_data])
+        mean_normal = np.mean(normal_values, axis=0)
+        std_normal = np.std(normal_values, axis=0)
+
+        # Find delay between normal and filtered data by cross-correlation
+        corr = signal.correlate(mean_normal, data[1, laterality], mode="full")
+        lag = np.argmax(corr) - (len(mean_normal) - 1)
+
+        # Find TE (1/Fe)
+        te = data[("", "Time (ms)")][1] - data[("", "Time (ms)")][0]
+
+        # Convert lag to time
+        lag = lag * te
+
+        # Create figure
         fig = px.line(
-            x=data[("", "Time (ms)")], y=data[1, laterality], title=laterality
+            x=data[("", "Time (ms)")],
+            y=data[1, laterality],
+            title=f"{laterality}",
         )
+
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")] - lag,
+            std_mult=4,
+            color="rgba(0,115,0,0.2)",
+        )
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")] - lag,
+            std_mult=2,
+            color="rgba(0,115,0,0.2)",
+        )
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")] - lag,
+            std_mult=1,
+            color="rgba(0,150,0,0.25)",
+        )
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")] - lag,
+            std_mult=0.5,
+            color="rgba(0,225,0,0.3)",
+        )
+
         # set y axis to -150 150
         fig.update_yaxes(range=[-150, 150])
         if extract_markers and marker is not None:
@@ -105,6 +211,7 @@ def plot_F30(data, extract_markers=False, prominance=5, delta=0.7, filtered=180)
 
 def plot_scoto(
     data,
+    normal_data,
     extract_markers=False,
     rodOnly=True,
     scotorodcone_low_pass=75,
@@ -173,6 +280,36 @@ def plot_scoto(
     ):
         fig = px.line(
             x=data[("", "Time (ms)")], y=data[step, laterality], title=laterality
+        )
+        normal_values = [
+            r[(step, laterality)] for r in normal_data if len(r) == len(data)
+        ]
+        mean_normal = np.mean(normal_values, axis=0)
+        std_normal = np.std(normal_values, axis=0)
+
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")],
+            std_mult=2,
+            color="rgba(0,115,0,0.2)",
+        )
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")],
+            std_mult=1,
+            color="rgba(0,150,0,0.25)",
+        )
+        add_fill_between(
+            fig=fig,
+            mean_values=mean_normal,
+            std_values=std_normal,
+            time=data[("", "Time (ms)")],
+            std_mult=0.5,
+            color="rgba(0,225,0,0.3)",
         )
 
         if extract_markers and marker is not None:
