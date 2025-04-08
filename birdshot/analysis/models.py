@@ -60,7 +60,7 @@ def train(
 def load_model():
     model = RNN(input_dim=1, hidden_dim=16, output_dim=4, num_layers=4)
 
-    state_dict = torch.load("models/GRU_4l_16h.pt")
+    state_dict = torch.load("models/GRU_4l_16h.pt", map_location="cpu")
     model.load_state_dict(state_dict)
     model.eval()
     return model
@@ -89,7 +89,6 @@ def evaluate(model, x, choice="max_proba"):
     results = {}
     for i, label in enumerate(["i", "b", "a"]):
         i = i + 1
-
         # Find the largest proba for the i-th class
         if choice == "max_proba":
             idx_max_proba = yproba[:, :, i].argmax(1)
