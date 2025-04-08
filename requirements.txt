@@ -1,6 +1,5 @@
 altair==5.5.0
 attrs==25.3.0
--e git+ssh://git@github.com/ClementPla/birdshot.git@45b3ef794317154babb6ad4d9a4830f9666c16f3#egg=birdshot
 blinker==1.9.0
 cachetools==5.5.2
 certifi==2025.1.31
