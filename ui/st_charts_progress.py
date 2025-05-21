@@ -11,6 +11,8 @@ from birdshot.analysis.markers import (
 )
 from birdshot.utils.st_chart import add_fill_between
 
+from utils.colors import get_std_colors
+
 
 def plot_f30_progression(data, normal_data, f30_low_pass, f30_prominance, f30_delta):
     meanAmplitudes = dict(OS=dict(), OD=dict())
@@ -139,7 +141,19 @@ def plot_scoto_rodcone(
         fig = go.Figure()
         x = data[visit][("", "Time (ms)")]
         offset = 0
-        for visit in data:
+        colors = get_std_colors()
+        for i, visit in enumerate(data):
+            for std_mult, color in colors.items():
+                add_fill_between(
+                    fig,
+                    mean_normal,
+                    std_normal,
+                    time=x + offset,
+                    std_mult=std_mult,
+                    color=color,
+                    showlegend=False,
+                )
+
             fig.add_trace(
                 go.Scatter(
                     x=x + offset,
@@ -147,34 +161,6 @@ def plot_scoto_rodcone(
                     name=visit,
                 )
             )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + offset,
-                std_mult=2.0,
-                color="rgba(0,115,0,0.2)",
-                showlegend=False,
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + offset,
-                std_mult=1.0,
-                color="rgba(0,150,0,0.25)",
-                showlegend=False,
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + offset,
-                std_mult=0.5,
-                color="rgba(0,225,0,0.3)",
-                showlegend=False,
-            )
-
             offset += (x.max() - x.min()) * 1.25
 
         fig.update_yaxes(range=[-250, 250])
@@ -273,41 +259,27 @@ def plot_scoto_rod(data, normal_data, scotorod_low_pass, scotorod_time_limits):
 
         fig = go.Figure()
         xoffset = 0
+        colors = get_std_colors()
         for visit in data:
             x = data[visit][("", "Time (ms)")]
+
+            for std_mult, color in colors.items():
+                add_fill_between(
+                    fig,
+                    mean_normal,
+                    std_normal,
+                    time=x + xoffset,
+                    std_mult=std_mult,
+                    color=color,
+                    showlegend=False,
+                )
+
             fig.add_trace(
                 go.Scatter(
                     x=x + xoffset,
                     y=data[visit][9, laterality].values,
                     name=visit,
                 )
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + xoffset,
-                std_mult=2.0,
-                color="rgba(0,115,0,0.2)",
-                showlegend=False,
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + xoffset,
-                std_mult=1.0,
-                color="rgba(0,150,0,0.25)",
-                showlegend=False,
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + xoffset,
-                std_mult=0.5,
-                color="rgba(0,225,0,0.3)",
-                showlegend=False,
             )
 
             xoffset += (x.max() - x.min()) * 1.5
@@ -367,9 +339,21 @@ def plot_photo_progress(data, normal_data, steps):
 
         mean_normal = np.mean(normal_values, axis=0)
         std_normal = np.std(normal_values, axis=0)
-
+        colors = get_std_colors()
         for visit, step in zip(data, steps):
             x = data[visit][("", "Time (ms)")]
+
+            for std_mult, color in colors.items():
+                add_fill_between(
+                    fig,
+                    mean_normal,
+                    std_normal,
+                    time=x + xoffset,
+                    std_mult=std_mult,
+                    color=color,
+                    showlegend=False,
+                )
+
             fig.add_trace(
                 go.Scatter(
                     x=x + xoffset,
@@ -378,37 +362,12 @@ def plot_photo_progress(data, normal_data, steps):
                 )
             )
 
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + xoffset,
-                std_mult=2.0,
-                color="rgba(0,115,0,0.2)",
-                showlegend=False,
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + xoffset,
-                std_mult=1.0,
-                color="rgba(0,150,0,0.25)",
-                showlegend=False,
-            )
-            add_fill_between(
-                fig,
-                mean_normal,
-                std_normal,
-                time=x + xoffset,
-                std_mult=0.5,
-                color="rgba(0,225,0,0.3)",
-                showlegend=False,
-            )
-
             xoffset += (x.max() - x.min()) * 1.5
 
-        fig.update_yaxes(range=[-250, 250])
+        fig.update_yaxes(range=[-150, 150])
         fig.update_layout(title=f"Photopic progression {laterality}")
         with col:
-            st.plotly_chart(fig)
+            st.plotly_chart(
+                fig,
+                scrollZoom=True,
+            )

@@ -64,14 +64,14 @@ class ERGFeatureExtractor:
                         prominance=self.f30_prominance,
                         delta=self.f30_delta,
                         plot=self.plot,
-                        title=filepath.stem,
+                        title=filepath.name,
                     )
                 )
             except Exception as e:
                 if self.verbose:
                     if self.show_error:
                         print("Failed to process F30 analysis")
-                    print(filepath.stem)
+                    print(filepath.name)
                     if self.show_error:
                         print(f"With error: {e}")
                 continue
@@ -95,7 +95,7 @@ class ERGFeatureExtractor:
                 Bamp, B_time_od, B_time_os = extract_scoto_rod_analysis(
                     df,
                     plot=self.plot,
-                    title=f"{filepath.stem} (Rod function)",
+                    title=f"{filepath.name} (Rod function)",
                     filtered=self.scotorod_low_pass,
                     time_limits=self.scotorod_time_limits,
                 )
@@ -103,7 +103,7 @@ class ERGFeatureExtractor:
                 if self.verbose:
                     if self.show_error:
                         print("Failed to process scoto rod analysis")
-                    print(filepath.stem)
+                    print(filepath.name)
                     if self.show_error:
                         print(f"With error: {e}")
                 continue
@@ -116,6 +116,7 @@ class ERGFeatureExtractor:
         for filepath in self.patient_files["Scoto"]:
             df = load_patient(filepath)
             date = extract_visit_date_from_filepath(filepath)
+
             if only_date is not None:
                 if date != only_date:
                     continue
@@ -127,7 +128,7 @@ class ERGFeatureExtractor:
                     extract_scoto_rod_cone_analysis(
                         df,
                         plot=self.plot,
-                        title=f"{filepath.stem} (Rod-cone function)",
+                        title=f"{filepath.name} (Rod-cone function)",
                         filtered=self.scotorodcone_low_pass,
                         time_limits=self.scotorodcone_time_limits,
                     )
@@ -136,7 +137,7 @@ class ERGFeatureExtractor:
                 if self.verbose:
                     if self.show_error:
                         print("Failed to process scoto rod cone analysis")
-                    print(filepath.stem)
+                    print(filepath.name)
                     if self.show_error:
                         print(f"With error: {e}")
                 continue
@@ -152,8 +153,7 @@ class ERGFeatureExtractor:
     def extract_photo_features(self, only_date=None):
         for filepath in self.patient_files["Photo"]:
             df = load_patient(filepath)
-            date = filepath.stem.split(" ")[1].replace("(", "").replace(")", "")
-            date = datetime.datetime.strptime(date, "%Y.%m.%d").date()
+            date = extract_visit_date_from_filepath(filepath)
             if only_date is not None:
                 if date != only_date:
                     continue
@@ -162,14 +162,14 @@ class ERGFeatureExtractor:
 
             try:
                 extract_photo_analysis(
-                    df, plot=self.plot, title=f"{filepath.stem} (Photo function)"
+                    df, plot=self.plot, title=f"{filepath.name} (Photo function)"
                 )
 
             except Exception as e:
                 if self.verbose:
                     if self.show_error:
                         print("Failed to process photo analysis")
-                    print(filepath.stem)
+                    print(filepath.name)
                     if self.show_error:
                         print(f"With error: {e}")
                 continue
@@ -188,7 +188,6 @@ class ERGFeatureExtractor:
         datatype = []
 
         df = pd.DataFrame.from_dict(self.features_per_visit)
-
         for index in df.index:
             if "OD" in index:
                 laterality.append("OD")

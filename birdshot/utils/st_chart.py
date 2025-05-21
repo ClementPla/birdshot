@@ -12,6 +12,12 @@ def add_fill_between(
     color="rgba(0,127,0,0.2)",
     showlegend=True,
 ):
+    opacity = st.session_state.normal_opacity
+
+    alpha = color.split(",")[-1]
+    alpha = alpha[: alpha.index(")")]
+    new_alpha = float(alpha) * opacity
+    color = color.replace(alpha + ")", str(new_alpha) + ")")
     if st.session_state.show_norm:
         fig.add_trace(
             go.Scatter(

@@ -2,39 +2,94 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import datetime
+from streamlit.runtime.uploaded_file_manager import UploadedFile
+from copy import deepcopy
+
+
+def extract_age_and_sex(filepath):
+    age = None
+    sex = None
+    if isinstance(filepath, UploadedFile):
+        f = filepath.getvalue().decode("unicode_escape").split("\n")
+        for i, line in enumerate(f):
+            if line.startswith("DOB"):
+                DOB = line.split("\t")[1]
+                # DOB is in the format YYYY-MM-DD
+
+                age = datetime.datetime.now().year - int(DOB.split("-")[0])
+            if line.startswith("Gender"):
+                sex = line.split("\t")[1][0]
+    else:
+        with open(filepath, "r", encoding="unicode_escape") as f:
+            for i, line in enumerate(f):
+                if line.startswith("DOB"):
+                    DOB = line.split("\t")[1]
+                    # DOB is in the format YYYY-MM-DD
+
+                    age = datetime.datetime.now().year - int(DOB.split("-")[0])
+                if line.startswith("Gender"):
+                    sex = line.split("\t")[1][0]
+
+    return age, sex
 
 
 def find_data_line(filepath):
-    with open(filepath, "r", encoding="unicode_escape") as f:
+    if isinstance(filepath, UploadedFile):
+        f = filepath.getvalue().decode("unicode_escape").split("\n")
         for i, line in enumerate(f):
             if line.startswith("Data Table"):
                 try:
                     return int(line.split("\t")[2]) - 2
                 except ValueError:
                     return i + 2
+    else:
+        with open(filepath, "r", encoding="unicode_escape") as f:
+            for i, line in enumerate(f):
+                if line.startswith("Data Table"):
+                    try:
+                        return int(line.split("\t")[2]) - 2
+                    except ValueError:
+                        return i + 2
 
     raise ValueError("Data line not found in file")
 
 
 def find_stimulus_line(filepath):
-    with open(filepath, "r", encoding="unicode_escape") as f:
+    if isinstance(filepath, UploadedFile):
+        f = filepath.getvalue().decode("unicode_escape").split("\n")
         for i, line in enumerate(f):
             if line.startswith("Stimulus Table"):
                 start = int(line.split("\t")[2])
                 end = int(line.split("\t")[4])
-                return start - 3, end - 1
+                return start - 3, end
+    else:
+        with open(filepath, "r", encoding="unicode_escape") as f:
+            for i, line in enumerate(f):
+                if line.startswith("Stimulus Table"):
+                    start = int(line.split("\t")[2])
+                    end = int(line.split("\t")[4])
+                    return start - 3, end - 1
 
     raise ValueError("Stimulus line not found in file")
 
 
 def find_marker_line(filepath):
-    with open(filepath, "r", encoding="unicode_escape") as f:
+    if isinstance(filepath, UploadedFile):
+        f = filepath.getvalue().decode("unicode_escape").split("\n")
         for i, line in enumerate(f):
             if line.startswith("Marker Table"):
                 values = line.split("\t")
                 begin = int(values[2])
                 end = int(values[4])
                 return begin - 3, end
+    else:
+        with open(filepath, "r", encoding="unicode_escape") as f:
+            for i, line in enumerate(f):
+                if line.startswith("Marker Table"):
+                    values = line.split("\t")
+                    begin = int(values[2])
+                    end = int(values[4])
+                    return begin - 3, end
 
     raise ValueError("Marker line not found in file")
 
@@ -42,12 +97,19 @@ def find_marker_line(filepath):
 def load_patient(filepath):
     if isinstance(filepath, str):
         filepath = Path(filepath)
-    isPhoto = "Photo" in filepath.stem
-    isScoto = "Scoto" in filepath.stem
-    isF30 = "F30" in filepath.stem
 
     data_line = find_data_line(filepath)
-    df = pd.read_csv(filepath, sep="\t", skiprows=data_line, encoding="unicode_escape")
+    try:
+        df = pd.read_csv(
+            deepcopy(filepath), sep="\t", skiprows=data_line, encoding="unicode_escape"
+        )
+    except pd.errors.EmptyDataError:
+        df = pd.read_csv(
+            deepcopy(filepath),
+            sep="\t",
+            skiprows=data_line + 1,
+            encoding="unicode_escape",
+        )
 
     # First columns is the trials
     trials = df[df.columns[0]]
@@ -68,13 +130,23 @@ def get_photo_step_for_patient(filepath, val=5.0):
 
     stimulus_line_start, stimulus_line_end = find_stimulus_line(filepath)
     nrows = stimulus_line_end - stimulus_line_start
-    df = pd.read_csv(
-        filepath,
-        sep="\t",
-        skiprows=stimulus_line_start,
-        nrows=nrows,
-        encoding="unicode_escape",
-    )
+
+    try:
+        df = pd.read_csv(
+            deepcopy(filepath),
+            sep="\t",
+            skiprows=stimulus_line_start,
+            nrows=nrows,
+            encoding="unicode_escape",
+        )
+    except pd.errors.EmptyDataError:
+        df = pd.read_csv(
+            deepcopy(filepath),
+            sep="\t",
+            skiprows=stimulus_line_start,
+            nrows=nrows + 1,
+            encoding="unicode_escape",
+        )
     df = df[df.columns[:3]]
     df = df[1:]
     col_intensity = df.columns[-1]
@@ -102,12 +174,9 @@ def extract_data(df: pd.DataFrame, trials, indexes, channels, relevant_channels)
     # We rename the columns based on the trials
     trialsOD = trials[chanOD]
     trialsOS = trials[chanOS]
-    # We want multi-columns for each trial with two sub-columns for OD and OS
 
     multicolOD = [(int(i), "OD") for i in trialsOD]
     multicolOS = [(int(i), "OS") for i in trialsOS]
-
-    # Find duplicates columns and remove all duplicates except the last one
 
     multicol = multicolOD + multicolOS
 
@@ -116,21 +185,6 @@ def extract_data(df: pd.DataFrame, trials, indexes, channels, relevant_channels)
     dfBoth.columns = multicol
     dfBoth.columns = pd.MultiIndex.from_tuples(dfBoth.columns, names=["Step", "Eye"])
 
-    # duplicatedColumns = dfBoth.columns.duplicated(keep="first")
-    # index150ms = (df["Time (ms)"] < df["Time (ms)"].max() * 0.75) & (
-    #     df["Time (ms)"] > 0
-    # )
-    # seen = set()
-    # for dupli, col in zip(duplicatedColumns, dfBoth.columns):
-    #     if dupli and col not in seen:
-    #         mask = dfBoth[col].copy()
-    #         data = mask.copy()
-    #         mask[~index150ms] = -np.inf
-    #         maxValue = mask.max(axis=0)
-    #         argmax = np.argmax(maxValue.values)
-    #         dfBoth = dfBoth.drop(col, axis=1)
-    #         dfBoth[col] = data.values[:, argmax]
-    #         seen.add(col)
     dfBoth = dfBoth.loc[:, ~dfBoth.columns.duplicated(keep="last")]
     dfBoth = dfBoth.reindex(sorted(dfBoth.columns), axis=1)
     dfBoth = dfBoth / 1000
@@ -194,19 +248,3 @@ def extract_markers(filepath):
 
     df = df.set_index(["Step", "Eye", "Markers"])
     return df.transpose()
-
-
-def extract_age_and_sex(filepath):
-    age = None
-    sex = None
-    with open(filepath, "r", encoding="unicode_escape") as f:
-        for i, line in enumerate(f):
-            if line.startswith("DOB"):
-                DOB = line.split("\t")[1]
-                # DOB is in the format YYYY-MM-DD
-
-                age = datetime.datetime.now().year - int(DOB.split("-")[0])
-            if line.startswith("Gender"):
-                sex = line.split("\t")[1][0]
-
-    return age, sex

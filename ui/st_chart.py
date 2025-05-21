@@ -16,6 +16,12 @@ import numpy as np
 
 from scipy import signal
 import streamlit as st
+from utils.colors import get_std_colors
+
+line_dict = dict(
+    width=2,
+    color="#1E90FF",
+)
 
 
 def plot_photo(
@@ -41,64 +47,47 @@ def plot_photo(
 
         mean_normal = np.mean(normal_values, axis=0)
         std_normal = np.std(normal_values, axis=0)
+        fig = go.Figure()
 
-        fig = px.line(
-            x=time,
-            y=data[laterality],
-            title=laterality,
-        )
+        colors = get_std_colors()
+        for std_mult, color in colors.items():
+            add_fill_between(
+                fig=fig,
+                time=data[("Time (ms)")],
+                mean_values=mean_normal,
+                std_values=std_normal,
+                std_mult=std_mult,
+                color=color,
+            )
 
-        add_fill_between(
-            fig=fig,
-            time=data[("Time (ms)")],
-            mean_values=mean_normal,
-            std_values=std_normal,
-            std_mult=4,
-            color="rgba(0,115,0,0.2)",
-        )
-        add_fill_between(
-            fig=fig,
-            time=data[("Time (ms)")],
-            mean_values=mean_normal,
-            std_values=std_normal,
-            std_mult=2,
-            color="rgba(0,115,0,0.2)",
-        )
-        add_fill_between(
-            fig=fig,
-            time=data[("Time (ms)")],
-            mean_values=mean_normal,
-            std_values=std_normal,
-            std_mult=1,
-            color="rgba(0,150,0,0.25)",
-        )
-        add_fill_between(
-            fig=fig,
-            time=data[("Time (ms)")],
-            mean_values=mean_normal,
-            std_values=std_normal,
-            std_mult=0.5,
-            color="rgba(0,225,0,0.3)",
+        fig.add_trace(
+            go.Line(x=time, y=data[laterality], name=laterality, line=line_dict)
         )
 
         fig.update_yaxes(range=[-150, 150])
         if extract_markers and markers is not None:
-            for label in labels:
+            for marker, label in zip(["diamond", "square", "circle"], labels):
                 xpt, ypt = markers[f"{laterality} {label}"]
                 fig.add_scatter(
                     x=xpt,
                     y=ypt,
                     mode="markers",
                     name=label,
-                    marker=dict(size=10),
+                    marker=dict(size=10, symbol=marker, color="black"),
                 )
-
+        fig.update_layout(template="ggplot2")
         with col:
             st.plotly_chart(fig)
 
 
 def plot_F30(
-    data, normal_data, extract_markers=False, prominance=5, delta=0.7, filtered=180
+    data,
+    normal_data,
+    extract_markers=False,
+    prominance=5,
+    delta=0.7,
+    filtered=180,
+    align_with_normal=True,
 ):
     col1, col2 = st.columns(2)
     od_marker = None
@@ -129,55 +118,40 @@ def plot_F30(
         normal_values = np.asarray([r[1, laterality].values for r in normal_data])
         mean_normal = np.mean(normal_values, axis=0)
         std_normal = np.std(normal_values, axis=0)
+        if align_with_normal:
+            # Find delay between normal and filtered data by cross-correlation
+            corr = signal.correlate(mean_normal, data[1, laterality], mode="full")
+            lag = np.argmax(corr) - (len(mean_normal) - 1)
 
-        # Find delay between normal and filtered data by cross-correlation
-        corr = signal.correlate(mean_normal, data[1, laterality], mode="full")
-        lag = np.argmax(corr) - (len(mean_normal) - 1)
+            # Find TE (1/Fe)
+            te = data[("", "Time (ms)")][1] - data[("", "Time (ms)")][0]
 
-        # Find TE (1/Fe)
-        te = data[("", "Time (ms)")][1] - data[("", "Time (ms)")][0]
-
-        # Convert lag to time
-        lag = lag * te
+            # Convert lag to time
+            lag = lag * te
+        else:
+            lag = 0
 
         # Create figure
-        fig = px.line(
-            x=data[("", "Time (ms)")],
-            y=data[1, laterality],
-            title=f"{laterality}",
-        )
+        fig = go.Figure()
 
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")] - lag,
-            std_mult=4,
-            color="rgba(0,115,0,0.2)",
-        )
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")] - lag,
-            std_mult=2,
-            color="rgba(0,115,0,0.2)",
-        )
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")] - lag,
-            std_mult=1,
-            color="rgba(0,150,0,0.25)",
-        )
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")] - lag,
-            std_mult=0.5,
-            color="rgba(0,225,0,0.3)",
+        colors = get_std_colors()
+        for std_mult, color in colors.items():
+            add_fill_between(
+                fig=fig,
+                time=data[("", "Time (ms)")] - lag,
+                mean_values=mean_normal,
+                std_values=std_normal,
+                std_mult=std_mult,
+                color=color,
+            )
+
+        fig.add_trace(
+            go.Line(
+                x=data[("", "Time (ms)")],
+                y=data[1, laterality],
+                name=laterality,
+                line=line_dict,
+            )
         )
 
         # set y axis to -150 150
@@ -278,38 +252,30 @@ def plot_scoto(
     for laterality, col, marker in zip(
         ["OD", "OS"], [col1, col2], [od_markers, os_markers]
     ):
-        fig = px.line(
-            x=data[("", "Time (ms)")], y=data[step, laterality], title=laterality
-        )
         normal_values = [
             r[(step, laterality)] for r in normal_data if len(r) == len(data)
         ]
         mean_normal = np.mean(normal_values, axis=0)
         std_normal = np.std(normal_values, axis=0)
+        fig = go.Figure()
+        colors = get_std_colors()
+        for std_mult, color in colors.items():
+            add_fill_between(
+                fig=fig,
+                time=data[("", "Time (ms)")],
+                mean_values=mean_normal,
+                std_values=std_normal,
+                std_mult=std_mult,
+                color=color,
+            )
 
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")],
-            std_mult=2,
-            color="rgba(0,115,0,0.2)",
-        )
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")],
-            std_mult=1,
-            color="rgba(0,150,0,0.25)",
-        )
-        add_fill_between(
-            fig=fig,
-            mean_values=mean_normal,
-            std_values=std_normal,
-            time=data[("", "Time (ms)")],
-            std_mult=0.5,
-            color="rgba(0,225,0,0.3)",
+        fig.add_trace(
+            go.Line(
+                x=data[("", "Time (ms)")],
+                y=data[step, laterality],
+                name=laterality,
+                line=line_dict,
+            )
         )
 
         if extract_markers and marker is not None:
@@ -328,13 +294,13 @@ def plot_scoto(
                 legendgroup="baseline",
                 name="Baseline",
             )
-            for name, m, c in zip(["B", "A"], marker, ["orange", "red"]):
+            for name, m, c in zip(["B", "A"], marker, ["circle", "diamond"]):
                 fig.add_scatter(
                     x=[m[1]],
                     y=[m[0]],
                     mode="markers",
                     name=name,
-                    marker=dict(size=10, color=c),
+                    marker=dict(size=10, color="black", symbol=c),
                 )
         fig.update_yaxes(range=[-250, 250])
         with col:
